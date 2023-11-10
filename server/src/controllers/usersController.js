@@ -1,21 +1,44 @@
 const createError = require("http-errors");
 const User = require("../models/User");
-
+const jwt = require("jsonwebtoken");
 const { successResponse } = require("./responseController");
 const mongoose = require("mongoose");
 const { findWithId } = require("../services/findItem");
 const deleteImage = require("../helper/deleteImage");
 const { createJWT } = require("../helper/jsonwebtoken");
+const emailWithNodeMailer = require("../helper/email");
 
 const createUser = async (req, res, next) => {
   try {
-    const {name,email,password,phone,address} = req.body
-    const userExists = await User.exists({email:email})
-    if(userExists){
-      throw createError(409,'user with this email already exists. Please sign in')
+    const { name, email, password, phone, address } = req.body;
+    const userExists = await User.exists({ email: email });
+    if (userExists) {
+      throw createError(
+        409,
+        "user with this email already exists. Please sign in"
+      );
     }
-    const jwtActivationKey = process.env.JWT_ACTIVATION_KEY
-    const token = createJWT({name,email,password,phone,address},jwtActivationKey,"10m")
+    const jwtActivationKey = process.env.JWT_ACTIVATION_KEY;
+    const token = createJWT(
+      { name, email, password, phone, address },
+      jwtActivationKey,
+      "10m"
+    );
+    const emailData = {
+      email,
+      subject: "Account activation email",
+      html: `
+      <h2> Hello ${name} !</h2>
+      <p>Please click on the following link to verify <a href="${process.env.CLIENT_URL}/api/users/activate/${token}" target="_blank">your account</></p>
+      `,
+    };
+    try {
+      await emailWithNodeMailer(emailData);
+    } catch (error) {
+      next(createError(500, "failed to send verification email"));
+      return;
+    }
+
     const newUser = {
       name,
       email,
@@ -23,12 +46,28 @@ const createUser = async (req, res, next) => {
       address,
       phone,
     };
-    
-    return successResponse(res,{
-      statusCode:200,
-      message:"user was created successfully",
-      payload:{token}
-    })
+
+    return successResponse(res, {
+      statusCode: 200,
+      message: `please go to ${email} to complete your registration`,
+      payload: { token },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+const activateUserAccount = async (req, res, next) => {
+  try {
+    const token = req.body.token;
+    if(!token) throw createError(404, "token not found");
+    const decoded = jwt.verify(token, process.env.JWT_ACTIVATION_KEY);
+    if(!decoded) throw createError(404, "user not found");
+    await User.create(decoded);
+    return successResponse(res, {
+      statusCode: 201,
+      message: "user successfully registered",
+      
+    });
   } catch (error) {
     next(error);
   }
@@ -94,15 +133,21 @@ const deleteUser = async (req, res, next) => {
     const user = await findWithId(User, id, options);
 
     const userImagePath = user.image;
-    deleteImage(userImagePath)
+    deleteImage(userImagePath);
     await User.findByIdAndDelete({ _id: id, isAdmin: false });
 
     return successResponse(res, {
       statusCode: 200,
-      message: "user was deleted succesfully",  
+      message: "user was deleted succesfully",
     });
   } catch (error) {
     next(error);
   }
 };
-module.exports = { getUsers, createUser, getUserById, deleteUser };
+module.exports = {
+  getUsers,
+  createUser,
+  getUserById,
+  deleteUser,
+  activateUserAccount,
+};
