@@ -6,7 +6,7 @@ const createJWT = (payload, secret, expiresIn) => {
   if (typeof secret !== "string" || secret === "") {
     throw new Error("secret key must be a non-empty string");
   }
-  try {
+  try {  
     const token = jwt.sign(payload, secret, { expiresIn });
     return token;
   } catch (error) {

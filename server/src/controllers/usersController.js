@@ -7,10 +7,13 @@ const { findWithId } = require("../services/findItem");
 const deleteImage = require("../helper/deleteImage");
 const { createJWT } = require("../helper/jsonwebtoken");
 const emailWithNodeMailer = require("../helper/email");
+const fs = require('fs')
 
 const createUser = async (req, res, next) => {
   try {
-    const { name, email, password, phone, address } = req.body;
+   
+    const { name, email, password, phone, address, } = req.body;
+    const imageBufferString = req.file.buffer.toString('base64')
     const userExists = await User.exists({ email: email });
     if (userExists) {
       throw createError(
@@ -18,9 +21,10 @@ const createUser = async (req, res, next) => {
         "user with this email already exists. Please sign in"
       );
     }
+    
     const jwtActivationKey = process.env.JWT_ACTIVATION_KEY;
     const token = createJWT(
-      { name, email, password, phone, address },
+      { name, email, password, phone, address, image:imageBufferString},
       jwtActivationKey,
       "10m"
     );
@@ -33,7 +37,7 @@ const createUser = async (req, res, next) => {
       `,
     };
     try {
-      await emailWithNodeMailer(emailData);
+      await emailWithNodeMailer(emailData); 
     } catch (error) {
       next(createError(500, "failed to send verification email"));
       return;
